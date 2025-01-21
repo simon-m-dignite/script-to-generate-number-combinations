@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { saveAs } from "file-saver";
+import * as XLSX from "xlsx"; // Import the xlsx library
 
 const CombinationGenerator = () => {
   const [start, setStart] = useState(1);
   const [end, setEnd] = useState(20);
   const [combinationSize, setCombinationSize] = useState(3);
   const [excludedNumber, setExcludedNumber] = useState(""); // State for excluded number
+
   const [filters, setFilters] = useState({
     excludeAllEvenNumbers: false,
     excludeAllOddNumbers: false,
@@ -15,6 +17,7 @@ const CombinationGenerator = () => {
     excludeThreeNumbersInRangeBetween20to29: false,
     excludeThreeNumbersInRangeBetween30to39: false,
     excludeSameOnesDigit: false,
+    excludeThreeNumbersInRangeOfFive: false,
   });
 
   const generateCombinations = (arr, size) => {
@@ -34,12 +37,11 @@ const CombinationGenerator = () => {
 
   const filterCombinations = (combinations) => {
     return combinations.filter((combination) => {
-      // Conditionally apply filters based on selected checkboxes
       const isAllEven = combination.every((num) => num % 2 === 0);
       const isAllOdd = combination.every((num) => num % 2 !== 0);
 
-      // Apply 'Exclude all odd' filter: exclude combinations that have any odd number
-      const hasAnyOdd = combination.some((num) => num % 2 !== 0); // Check if there's any odd number
+      // Check if there's any odd number
+      const hasAnyOdd = combination.some((num) => num % 2 !== 0);
 
       const hasThreeConsecutive = combination.some(
         (_, i) =>
@@ -59,14 +61,19 @@ const CombinationGenerator = () => {
         }, {})
       ).some((count) => count >= 3);
 
-      // Exclude combinations that contain the excluded number
+      const hasThreeInFiveRange = combination.some((num, index) => {
+        const range = combination.filter(
+          (otherNum) => otherNum >= num && otherNum < num + 5
+        );
+        return range.length >= 3;
+      });
+
       const containsExcludedNumber = combination.includes(
         Number(excludedNumber)
       );
 
-      // Apply filtering rules
       return (
-        !containsExcludedNumber && // Exclude if the combination contains the excluded number
+        !containsExcludedNumber &&
         (!filters.excludeAllEvenNumbers || !isAllEven) &&
         (!filters.excludeAllOddNumbers || !hasAnyOdd) &&
         (!filters.excludeThreeConsecutiveNumbers || !hasThreeConsecutive) &&
@@ -78,12 +85,13 @@ const CombinationGenerator = () => {
           !hasThreeInRange(20, 29)) &&
         (!filters.excludeThreeNumbersInRangeBetween30to39 ||
           !hasThreeInRange(30, 39)) &&
-        (!filters.excludeSameOnesDigit || !hasThreeInOnesPlace)
+        (!filters.excludeSameOnesDigit || !hasThreeInOnesPlace) &&
+        (!filters.excludeThreeNumbersInRangeOfFive || !hasThreeInFiveRange)
       );
     });
   };
 
-  const handleGenerate = () => {
+  const handleGenerateCSV = () => {
     const numbers = Array.from(
       { length: end - start + 1 },
       (_, i) => i + start
@@ -91,12 +99,43 @@ const CombinationGenerator = () => {
     const combinations = generateCombinations(numbers, combinationSize);
     const filteredCombinations = filterCombinations(combinations);
 
-    // Convert to CSV
     const csvContent = filteredCombinations
       .map((combo) => combo.join(","))
       .join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     saveAs(blob, "filtered_combinations.csv");
+  };
+
+  const handleGenerateExcel = () => {
+    // Generate an array of numbers between start and end
+    const numbers = Array.from(
+      { length: end - start + 1 },
+      (_, i) => i + start
+    );
+
+    // Generate all combinations
+    const combinations = generateCombinations(numbers, combinationSize);
+
+    // Filter combinations based on the selected filters
+    const filteredCombinations = filterCombinations(combinations);
+
+    // Ensure the filtered combinations are in a 2D array format
+    // `filteredCombinations` should be an array of arrays
+    const excelData = filteredCombinations.map((combo) => {
+      return combo; // Each combination is an array, so no need to modify
+    });
+
+    // Create a worksheet from the filtered combinations
+    const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+    // Create a new workbook
+    const wb = XLSX.utils.book_new();
+
+    // Append the worksheet to the workbook
+    XLSX.utils.book_append_sheet(wb, ws, "Combinations");
+
+    // Write the Excel file and trigger the download
+    XLSX.writeFile(wb, "filtered_combinations.xlsx");
   };
 
   const handleCheckboxChange = (filter) => {
@@ -190,6 +229,8 @@ const CombinationGenerator = () => {
                 "Exclude all combinations that contain 3 or more numbers between 30-39",
               excludeSameOnesDigit:
                 "Exclude all combinations that contain 3 or more numbers with the same digit in the ones place (e.g., 7, 17, 27, etc.)",
+              excludeThreeNumbersInRangeOfFive:
+                "Exclude all combinations that contain 3 numbers within any range of 5 consecutive numbers",
             };
 
             const filterLabel = labels[filterKey] || filterKey;
@@ -210,13 +251,19 @@ const CombinationGenerator = () => {
           })}
         </div>
 
-        {/* Generate Button */}
-        <div className="w-full mt-4">
+        {/* Generate Buttons */}
+        <div className="w-full mt-4 flex gap-4">
           <button
-            onClick={handleGenerate}
+            onClick={handleGenerateCSV}
             className="text-white bg-blue-500 hover:bg-blue-600 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm w-full sm:w-auto px-5 py-2.5 text-center"
           >
             Generate and Download CSV
+          </button>
+          <button
+            onClick={handleGenerateExcel}
+            className="text-white bg-green-500 hover:bg-green-600 focus:ring-4 focus:outline-none focus:ring-green-300 font-medium rounded-lg text-sm w-full sm:w-auto px-5 py-2.5 text-center"
+          >
+            Generate and Download Excel File
           </button>
         </div>
       </div>
