@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import { saveAs } from "file-saver";
-import * as XLSX from "xlsx"; // Import the xlsx library
+import * as XLSX from "xlsx";
 
 const CombinationGenerator = () => {
   const [start, setStart] = useState(1);
   const [end, setEnd] = useState(20);
   const [combinationSize, setCombinationSize] = useState(3);
-  const [excludedNumber, setExcludedNumber] = useState(""); // State for excluded number
+  const [excludedNumber, setExcludedNumber] = useState("");
+  const [loadingCSV, setLoadingCSV] = useState(false);
+  const [loadingExcel, setLoadingExcel] = useState(false);
 
   const [filters, setFilters] = useState({
     excludeAllEvenNumbers: false,
@@ -18,6 +20,7 @@ const CombinationGenerator = () => {
     excludeThreeNumbersInRangeBetween30to39: false,
     excludeSameOnesDigit: false,
     excludeThreeNumbersInRangeOfFive: false,
+    excludeConsecutiveCountingNumbers: false, // New rule for consecutive counting numbers
   });
 
   const generateCombinations = (arr, size) => {
@@ -37,12 +40,17 @@ const CombinationGenerator = () => {
 
   const filterCombinations = (combinations) => {
     return combinations.filter((combination) => {
-      const isAllEven = combination.every((num) => num % 2 === 0);
-      const isAllOdd = combination.every((num) => num % 2 !== 0);
+      // Check if there are two consecutive even numbers
+      const hasConsecutiveEvens = combination.some(
+        (num, index) => num % 2 === 0 && combination[index + 1] % 2 === 0
+      );
 
-      // Check if there's any odd number
-      const hasAnyOdd = combination.some((num) => num % 2 !== 0);
+      // Check if there are two consecutive odd numbers
+      const hasConsecutiveOdds = combination.some(
+        (num, index) => num % 2 !== 0 && combination[index + 1] % 2 !== 0
+      );
 
+      // Check if there are three consecutive numbers
       const hasThreeConsecutive = combination.some(
         (_, i) =>
           i <= combination.length - 3 &&
@@ -50,9 +58,11 @@ const CombinationGenerator = () => {
           combination[i + 2] === combination[i] + 2
       );
 
+      // Check if there are 3 or more numbers in the range [1, 9]
       const hasThreeInRange = (min, max) =>
         combination.filter((num) => num >= min && num <= max).length >= 3;
 
+      // Check for numbers with the same ones digit
       const hasThreeInOnesPlace = Object.values(
         combination.reduce((acc, num) => {
           const ones = num % 10;
@@ -61,6 +71,7 @@ const CombinationGenerator = () => {
         }, {})
       ).some((count) => count >= 3);
 
+      // Check if there are 3 or more numbers in the range of 5 consecutive numbers
       const hasThreeInFiveRange = combination.some((num, index) => {
         const range = combination.filter(
           (otherNum) => otherNum >= num && otherNum < num + 5
@@ -68,14 +79,20 @@ const CombinationGenerator = () => {
         return range.length >= 3;
       });
 
+      // Check if a combination includes the excluded number
       const containsExcludedNumber = combination.includes(
         Number(excludedNumber)
       );
 
+      // Check for consecutive counting numbers (e.g., 2, 3, 5, 6, etc.)
+      const hasConsecutiveCountingNumbers = combination.some(
+        (num, index) => combination[index + 1] === num + 1 // consecutive numbers like 5, 6
+      );
+
       return (
         !containsExcludedNumber &&
-        (!filters.excludeAllEvenNumbers || !isAllEven) &&
-        (!filters.excludeAllOddNumbers || !hasAnyOdd) &&
+        (!filters.excludeAllEvenNumbers || !hasConsecutiveEvens) && // Exclude if there are consecutive even numbers
+        (!filters.excludeAllOddNumbers || !hasConsecutiveOdds) && // Exclude if there are consecutive odd numbers
         (!filters.excludeThreeConsecutiveNumbers || !hasThreeConsecutive) &&
         (!filters.excludeThreeNumbersInRangeBetween1to9 ||
           !hasThreeInRange(1, 9)) &&
@@ -86,12 +103,15 @@ const CombinationGenerator = () => {
         (!filters.excludeThreeNumbersInRangeBetween30to39 ||
           !hasThreeInRange(30, 39)) &&
         (!filters.excludeSameOnesDigit || !hasThreeInOnesPlace) &&
-        (!filters.excludeThreeNumbersInRangeOfFive || !hasThreeInFiveRange)
+        (!filters.excludeThreeNumbersInRangeOfFive || !hasThreeInFiveRange) &&
+        (!filters.excludeConsecutiveCountingNumbers ||
+          !hasConsecutiveCountingNumbers) // New rule applied here
       );
     });
   };
 
   const handleGenerateCSV = () => {
+    setLoadingCSV(true);
     const numbers = Array.from(
       { length: end - start + 1 },
       (_, i) => i + start
@@ -104,9 +124,11 @@ const CombinationGenerator = () => {
       .join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     saveAs(blob, "filtered_combinations.csv");
+    setLoadingCSV(false);
   };
 
   const handleGenerateExcel = () => {
+    setLoadingExcel(true);
     // Generate an array of numbers between start and end
     const numbers = Array.from(
       { length: end - start + 1 },
@@ -136,6 +158,7 @@ const CombinationGenerator = () => {
 
     // Write the Excel file and trigger the download
     XLSX.writeFile(wb, "filtered_combinations.xlsx");
+    setLoadingExcel(false);
   };
 
   const handleCheckboxChange = (filter) => {
@@ -231,6 +254,8 @@ const CombinationGenerator = () => {
                 "Exclude all combinations that contain 3 or more numbers with the same digit in the ones place (e.g., 7, 17, 27, etc.)",
               excludeThreeNumbersInRangeOfFive:
                 "Exclude all combinations that contain 3 numbers within any range of 5 consecutive numbers",
+              excludeConsecutiveCountingNumbers:
+                "Exclude combinations that contain 2 or more consecutive counting numbers", // New rule label
             };
 
             const filterLabel = labels[filterKey] || filterKey;
@@ -257,13 +282,13 @@ const CombinationGenerator = () => {
             onClick={handleGenerateCSV}
             className="text-white bg-blue-500 hover:bg-blue-600 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm w-full sm:w-auto px-5 py-2.5 text-center"
           >
-            Generate and Download CSV
+            {loadingCSV ? "Loading..." : "Generate and Download CSV"}
           </button>
           <button
             onClick={handleGenerateExcel}
             className="text-white bg-green-500 hover:bg-green-600 focus:ring-4 focus:outline-none focus:ring-green-300 font-medium rounded-lg text-sm w-full sm:w-auto px-5 py-2.5 text-center"
           >
-            Generate and Download Excel File
+            {loadingExcel ? "Loading..." : "Generate and Download Excel File"}
           </button>
         </div>
       </div>
